@@ -1,6 +1,7 @@
 import os
 import subprocess
 import argparse
+import json
 from collections import namedtuple
 
 Track = namedtuple('Track', ['path', 'name'])
@@ -33,15 +34,26 @@ def generate_ffmpeg_command(tracks, output_file, crossfade_duration):
     command = f"ffmpeg {' '.join(inputs)} -filter_complex \"{filter_complex}\" -map \"{last_output}\" -c:a libmp3lame \"{output_file}\""
     return command
 
-def generate_waveform_with_text(input_audio, output_video, background_png, tracks):
+def get_audio_duration(file_path):
+    cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', file_path]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    data = json.loads(result.stdout)
+    return float(data['format']['duration'])
+
+def generate_waveform_with_text(input_audio, output_video, background_png, tracks, visualization_type, wave_color, wave_opacity):
     text_filters = []
+    total_duration = 0
     for i, track in enumerate(tracks):
         escaped_name = track.name.replace("'", "'\\\\\\''")
+        start_time = total_duration
+        track_duration = get_audio_duration(track.path)
+        end_time = start_time + track_duration
         text_filters.append(
             f"drawtext=fontsize=24:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=5:"
-            f"x=10:y=h-th-10:text='{escaped_name}':enable='between(t,{i*60},{(i+1)*60})'"
+            f"x=10:y=h-th-10:text='{escaped_name}':enable='between(t,{start_time},{end_time})'"
         )
-    
+        total_duration += track_duration
+
     text_filters.append(
         "drawtext=fontsize=24:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=5:"
         "x=w-tw-10:y=h-th-10:text='%{pts\\:hms}'"
@@ -51,7 +63,7 @@ def generate_waveform_with_text(input_audio, output_video, background_png, track
 
     filter_complex = (
         f"[0:v]scale=1000:1000[bg];"
-        f"[1:a]showwaves=s=1000x1000:mode=line:colors=white[waves];"
+        f"[1:a]showwaves=s=1000x1000:mode={visualization_type}:colors={wave_color}@{wave_opacity}[waves];"
         f"[bg][waves]overlay=format=auto,format=yuv420p,{text_filter_string}[v]"
     )
 
@@ -65,7 +77,7 @@ def generate_waveform_with_text(input_audio, output_video, background_png, track
         "-map", "1:a",
         "-c:v", "libx264",
         "-c:a", "copy",
-        "-shortest",
+        "-t", str(total_duration),
         output_video,
         "-y"
     ]
@@ -78,6 +90,10 @@ def main():
     parser.add_argument("output_file", type=str, help="Nazwa pliku wyjściowego MP4 z efektem crossfade, tłem PNG i waveformą.")
     parser.add_argument("--crossfade_duration", type=int, default=5, help="Czas trwania crossfade w sekundach. Domyślnie 5 sekund.")
     parser.add_argument("--background_png", type=str, required=True, help="Ścieżka do pliku PNG używanego jako tło.")
+    parser.add_argument("--visualization_type", type=str, default="line", choices=["line", "p2p", "cline"], 
+                        help="Typ wizualizacji fali dźwiękowej. Opcje: line (linia), p2p (punkt do punktu), cline (kolorowa linia). Domyślnie: line.")
+    parser.add_argument("--wave_color", type=str, default="white", help="Kolor fali dźwiękowej. Można użyć nazw kolorów (np. 'red', 'blue') lub kodów hex (np. '0xFFFFFF'). Domyślnie: white.")
+    parser.add_argument("--wave_opacity", type=float, default=1.0, help="Przezroczystość fali dźwiękowej. Wartość od 0.0 (pełna przezroczystość) do 1.0 (brak przezroczystości). Domyślnie: 1.0.")
 
     args = parser.parse_args()
 
@@ -87,6 +103,9 @@ def main():
         output_file += '.mp4'
     crossfade_duration = args.crossfade_duration
     background_png = args.background_png
+    visualization_type = args.visualization_type
+    wave_color = args.wave_color
+    wave_opacity = args.wave_opacity
 
     # Znajdź plik M3U w katalogu wejściowym
     m3u_files = [f for f in os.listdir(input_dir) if f.endswith('.m3u')]
@@ -113,7 +132,7 @@ def main():
         # Generowanie waveformy dla mixu wideo z napisami
         input_audio = "temp_audio.mp3"
         print("Generowanie waveformy z napisami...")
-        generate_waveform_with_text(input_audio, output_file, background_png, tracks)
+        generate_waveform_with_text(input_audio, output_file, background_png, tracks, visualization_type, wave_color, wave_opacity)
         
         print(f"Waveforma z napisami została wygenerowana pomyślnie. Plik wyjściowy: {output_file}")
 

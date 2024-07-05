@@ -1,6 +1,6 @@
 Usage:
 
-python3 mix_mp3.py MYMUSIC/ output.mp4 --background_png cover.png --visualization_type p2p --wave_color yellow --wave_opacity 0.7
+ython3 mix_mp3a.py MyMusic/ output.mp4 --background_png album_cover.png --visualization_type p2p --wave_color orange --wave_opacity 1.0 --text_color yellow --text_size 64
 
 visualization_types:
 

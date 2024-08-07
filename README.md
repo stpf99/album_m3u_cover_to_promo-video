@@ -11,4 +11,4 @@ visualization_types:
 
 Info:
 
-/home/ts/Music/My_album my_mix must contain m3u file (any name)
+MyMusic/  must contain m3u playlist file (any name)
